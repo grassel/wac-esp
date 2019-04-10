@@ -77,6 +77,8 @@ Upload the code to the EPS32
 
 ```curl -X POST --data-binary @abc.base64   http://a.b.c.d/run```
 
+To run the factRec test for wich t he function call is hard wired in the code (FIXME)
+```curl -X POST --data-binary @test/factRec.base64  http://a.b.c.d/run```
 
 
 ## License
