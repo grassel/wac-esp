@@ -41,9 +41,10 @@ In the root directory ```./wac```, build everything:
 
 Flash the built image and start the monitor:
 
-```make flash monitr```
+```make flash monitor```
 
 The output is pretty verbouse becasue tracing is enabled (change in platform.h). If everything goes fine it prints the return value, tells its done and reboots to start over. Stop the monitor with ```CTRL - ]```.
+
 
 
 ## Build Instructions for Ubuntu
@@ -65,6 +66,18 @@ Unset ESP_PLATFORM environment variable (otherwise the built will be for ESP)
 Make the executable out/wac
 
 ```make all```
+
+## How to upload a WASM file
+
+Base64 encode the file
+
+```base64 abc.wasm > abc.base64```
+
+Upload the code to the EPS32
+
+```curl -X POST --data-binary @abc.base64   http://a.b.c.d/run```
+
+
 
 ## License
 

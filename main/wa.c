@@ -427,6 +427,7 @@ void find_blocks(Module *m) {
             case 0x02: // block
             case 0x03: // loop
             case 0x04: // if
+                info("  find_blocks: alocating %iBytes for new Block\n", sizeof(Block));
                 block = acalloc(1, sizeof(Block), "Block");
                 block->block_type = opcode;
                 block->type = get_block_type(m->bytes[pos+1]);

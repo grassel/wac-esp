@@ -28,22 +28,22 @@ CFLAGS += -DLOW_MEMORY_CONFIG
 
 ifeq (,$(ESP_PLATFORM))
   CC = gcc $(CFLAGS) -std=gnu99 -m32 -g
-  OBJ = out/wa.o out/util.o out/platform.o out/thunk.o out/wac.o
+  OBJ = out/wac.o out/wa.o out/util.o out/platform.o out/thunk.o out/wifi_http_comm.o
 endif
 
 #  dependencies
 out/util.o: main/util.h
-out/wa.o: main/wa.h main/util.h main/platform.h
+out/wa.o: main/wa.h main/util.h main/platform.h 
 out/thunk.o: main/wa.h main/thunk.h
-out/wa.a: out/util.o out/thunk.o out/platform.o
-out/wac: out/wa.a out/wac.o
+out/platform.o: main/platform.h main/util.h
+out/wifi_http_comm.o: out/wifi_http_comm.h main/event_source.h
+out/wac.o: main/wac.h main/util.h main/platform.h main/wa.h main/event_source.h
 
 ifeq (,$(ESP_PLATFORM))
 
 all: out/wac
 
-out/%.a: main/%.o
-	ar rcs $@ $^
+out/wac: $(OBJ)  
 
 out/%.o: main/%.c
 	$(CC) -c $(filter %.c,$^) -o $@
@@ -53,6 +53,8 @@ out/wac : $(OBJ)
 
 clean ::
 	rm -f out/* examples_wast/*.wasm
+
+else
 
 endif
 
