@@ -101,4 +101,6 @@ void thunk_out(Module *m, uint32_t fidx);
 
 void init_thunk_in(Module *m);
 
+Module *getModule();
+
 #endif // _THUNK_H

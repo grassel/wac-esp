@@ -1,11 +1,5 @@
 
-#ifdef ESP_TARGET
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_spi_flash.h"
-#include <nvs_flash.h>
-#endif
+#include "app_wac.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +8,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <math.h>
+#include <esp_log.h>
 
 // Call table/trapping table lookups/execution
 #include <unistd.h>
@@ -23,9 +18,10 @@
 #include "platform.h"
 #include "wa.h"
 #include "thunk.h"
-#include "event_source.h"
 
-#include "wifi_http_comm.h"
+#include "app_wifi_http.h"
+
+const char* TAG = "app_wac: ";
 
 // WASM test files
 
@@ -109,14 +105,20 @@ double _global__Infinity_ = INFINITY;
 uint32_t **_env__DYNAMICTOP_PTR_;
 uint32_t *_env__tempDoublePtr_;
 
+bool wacIsInitalized = false;
+
 /** 
  * Initializw the WAC Interpreter part 
  *
  *  mainly initialize memory globals
  *
  */
-void InitializeWac()
+void initializeWac()
 {
+    // lazy initialize at first use of the Interpreter
+    if (wacIsInitalized) return;
+    wacIsInitalized = true;
+
     _env__memoryBase_ = calloc(PAGE_COUNT, PAGE_SIZE);
 
     _env__tempDoublePtr_ = (uint32_t *)_env__memoryBase_;
@@ -147,7 +149,14 @@ void InitializeWac()
 }
 
 
-void runWasm(Module *m) {
+void runWasm() {
+    Module *m = getModule();
+
+    if (m == NULL) {
+        ESP_LOGW(TAG, "runWasm - no module loaded");
+        // FIXME - send back error result
+    }
+
     // setup argc/argv
     m->stack[++m->sp].value_type = I32;
     m->stack[m->sp].value.uint32 = 3;
@@ -198,74 +207,17 @@ void runWasm(Module *m) {
     printf("\n\n ------ :-) DONE ------\n\n");
 }
 
-Module* parseWasm(unsigned char *bytes, size_t byte_count)
+
+void parseWasm(unsigned char *bytes, size_t byte_count)
 {
+    // lazy init if not done earlier
+    initializeWac();
+
     Options opts;
     Module *m = load_module(bytes, byte_count, opts);
     m->path = "arith.wasm";
 
     init_thunk_in(m);
     free(bytes);
-    return m;
 }
 
-void moduleLoaderHandlerFunc(void *event_handler_arg,
-                             esp_event_base_t event_base,
-                             int32_t event_id,
-                             void *event_data)
-{
-
-    ESP_ERROR_CHECK(event_base != WAC_HTTPD_EVENTS);
-    ESP_ERROR_CHECK(event_id != WAC_HTTPD_INIT_MODULE_EVENT);
-    ESP_ERROR_CHECK(event_data == NULL);
-
-    wasm_module_data_t *data=(wasm_module_data_t *) event_data;
-    ESP_ERROR_CHECK(data->bytes == NULL);
-    ESP_ERROR_CHECK(data->length == 0);
-
-    Module *m = parseWasm((unsigned char *)data->bytes, data->length);
-    //free(event_data);
-
-    // FIXME, separate HTTP API call for running
-    runWasm(m);
-}
-
-int main(int argc, char **argv)
-{
-    InitializeWac();
-
-#ifdef ESP_TARGET
-    //printf("Restarting now.\n");
-    //fflush(stdout);
-    //esp_restart();
-    return 0;
-#else
-    return 0;
-#endif
-}
-/**
- * ESP32 specific intialisation
- * This function must be called before anything else
- */
-void initializeEsp()
-{
-    // non-volatile storrage library (seems needed by Wifi)
-    ESP_ERROR_CHECK(nvs_flash_init());
-
-    // Create the default event loop
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    ESP_ERROR_CHECK(esp_event_handler_register(
-        WAC_HTTPD_EVENTS,
-        WAC_HTTPD_INIT_MODULE_EVENT,
-        moduleLoaderHandlerFunc,
-        NULL));
-}
-
-// entrypoint for ESP
-void app_main()
-{
-    initializeEsp();
-    initialiseWifiAndStartServer();
-    InitializeWac();
-}

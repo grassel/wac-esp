@@ -64,7 +64,7 @@ void thunk_out(Module *m, uint32_t fidx) {
 // TODO: global state, clean up somehow
 // This global is used by setup_thunk_in since signal handlers don't have
 // a way to pass arguments when they are setup.
-Module * _wa_current_module_;
+Module * _wa_current_module_ = NULL;
 
 THUNK_IN_FN_0(m, 0)
 THUNK_IN_FN_2(m, 0, i,i)
@@ -113,3 +113,6 @@ void init_thunk_in(Module *m) {
     _wa_current_module_ = m; // TODO: global state, clean up somehow
 }
 
+Module *getModule() {
+    return _wa_current_module_;
+}

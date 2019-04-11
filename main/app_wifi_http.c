@@ -29,8 +29,8 @@
 
 #include <esp_http_server.h>
 
-#include "event_source.h"
-#include "wifi_http_comm.h"
+#include "app_wifi_http.h"
+#include "app_wac.h"
 
 /*
  * We use simple WiFi configuration that you can set via
@@ -70,25 +70,106 @@ esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     return ESP_FAIL;
 }
 
-// FIXME
-extern void parseAndRunWasm(unsigned char *bytes, size_t byte_count);
 
-/* 
-  HTTP POST handler
-  receives a Binary WASM file from a client 
+/**
+ *  HTTP handler function for URL /call
+ * 
+ * invoke a function with optional paraters in WASM 
+ * 
+ **/
+esp_err_t wasm_call_function_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "wasm_call_function_handler: starting ....");
+
+    /* Read URL query string length and allocate memory for length + 1,
+     * extra byte for null termination */
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len < 1)
+    {
+        ESP_LOGI(TAG, "    URL without parameters, ignoring. DONE");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, 
+        "No function name found. Ignoring request.");
+        return ESP_FAIL;
+    }
+
+    char *buf = malloc(buf_len);
+    if (httpd_req_get_url_query_str(req, buf, buf_len) != ESP_OK)
+    {
+        ESP_LOGW(TAG, "   no query string found in url. Ignoring request. DONE!");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, 
+        "No query string found in url. Ignoring request.");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Found URL query => %s", buf);
+
+    const size_t func_l = 16;
+    const size_t p_t_l = 3;
+    const size_t p_l = 8;
+    
+    struct
+    {
+        char func[func_l];
+        char p1_t[p_t_l];
+        char p1[p_l];
+    } func_call;
+
+    // Get value of expected key from query string
+    if (httpd_query_key_value(buf, "func", func_call.func, func_l) != ESP_OK)
+    {
+        ESP_LOGW(TAG, "   no function name found. Ignoring request. DONE!");
+         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, 
+         "No function name found. Ignoring request.");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "   func=%s", func_call.func);
+
+    if ((httpd_query_key_value(buf, "p1_t", func_call.p1_t, p_t_l) == ESP_OK) &&
+        (httpd_query_key_value(buf, "p1", func_call.p1, p_l) == ESP_OK))
+    {
+        ESP_LOGI(TAG, "   p1_t=%s", func_call.p1_t);
+        ESP_LOGI(TAG, "   p1=%s", func_call.p1);
+    }
+    else
+    {
+        strcpy(func_call.p1_t, "");
+        strcpy(func_call.p1, "");
+        ESP_LOGI(TAG, "   no parameters found");
+    }
+
+    // FIXME, get the results of running the function
+    runWasm();
+    char *http_resp_msg = "Function has been called.";
+
+    /* Send back simple reply 
+    FIXME send back the result */
+    httpd_resp_send(req, http_resp_msg, strlen(http_resp_msg));
+
+    // End response
+    httpd_resp_send(req, NULL, 0);
+
+    return ESP_OK;
+}
+
+/**
+ *  
+ * HTTP POST handler for API /install
+ * receives a Binary WASM file from a client 
+ * 
 */
-esp_err_t wasm_post_handler(httpd_req_t *req)
+esp_err_t wasm_install_module_handler(httpd_req_t *req)
 {
     if (req->content_len <= 0)
     {
-        ESP_LOGW(TAG, "wasm_post_handler: missing or invalid Content-Length.");
+        ESP_LOGW(TAG, "wasm_install_module_handler: missing or invalid Content-Length.");
 
         /* send HTTP 411 Length Required response */
         httpd_resp_send_err(req, 411, "WAC API - 411 Content-Length missing!");
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "wasm_post_handler: %i Bytes of base64 encoded WASM to be received ....",
+    ESP_LOGI(TAG, "wasm_install_modul_handler: %i Bytes of base64 encoded WASM to be received ....",
              req->content_len);
 
     void *wasm_base64 = malloc(req->content_len);
@@ -125,21 +206,12 @@ esp_err_t wasm_post_handler(httpd_req_t *req)
     // this can be useful to verify uploading and base64 decoding work ok.
     //httpd_resp_send(req, (char *)wasm_binary, decoded_length);
 
-    /* Send back simple reply */
+    parseWasm((unsigned char *)wasm_binary, decoded_length);
+
+    /* Send back simple reply 
+    FIXME send back the result */
     char *msg = "OK";
     httpd_resp_send(req, msg, strlen(msg));
-
-    wasm_module_data_t *wasm_module = malloc(sizeof(wasm_module_data_t));
-    wasm_module->bytes = (unsigned char *)wasm_binary;
-    wasm_module->length = decoded_length;
-
-    ESP_ERROR_CHECK(esp_event_post(
-        WAC_HTTPD_EVENTS,
-        WAC_HTTPD_INIT_MODULE_EVENT,
-        (void *) wasm_module,
-        sizeof(wasm_module_data_t),
-        portMAX_DELAY // number of ticks to block on a full event queue
-        ));
 
     // End response
     httpd_resp_send(req, NULL, 0);
@@ -147,17 +219,14 @@ esp_err_t wasm_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-httpd_uri_t route_run =
-    {
-        .uri = "/run",
-        .method = HTTP_POST,
-        .handler = wasm_post_handler,
-        .user_ctx = NULL};
-
-/* HTTP handler function for URL /hello
-   its sole purpose is to make a friendly server
-   who greets nicely when clients want to know wac 
-   is alive. */
+/**
+ *  HTTP handler function for URL /hello
+ * 
+ * its sole purpose is to make a friendly server
+ * who greets nicely when clients want to know wac 
+ * is alive. 
+ * 
+ **/
 esp_err_t hello_get_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "hello_get_handler: starting ....");
@@ -242,6 +311,12 @@ esp_err_t hello_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/**
+ * 
+ * server API's and its handler functions
+ * 
+ */
+
 httpd_uri_t route_hello = {
     .uri = "/hello",
     .method = HTTP_GET,
@@ -250,10 +325,27 @@ httpd_uri_t route_hello = {
      * context to demonstrate it's usage */
     .user_ctx = "Hello World!"};
 
+httpd_uri_t route_install_module =
+    {
+        .uri = "/install",
+        .method = HTTP_POST,
+        .handler = wasm_install_module_handler,
+        .user_ctx = NULL};
+
+httpd_uri_t route_call_function =
+    {
+        .uri = "/call",
+        .method = HTTP_GET,
+        .handler = wasm_call_function_handler,
+        .user_ctx = NULL};
+
 bool start_webserver(void)
 {
     ESP_ERROR_CHECK(server != NULL);
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+    // FIXME: review the needed stack size
+    config.stack_size = 8 * config.stack_size;
 
     // Start the httpd server
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
@@ -262,7 +354,8 @@ bool start_webserver(void)
         // Set URI handlers
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &route_hello);
-        httpd_register_uri_handler(server, &route_run);
+        httpd_register_uri_handler(server, &route_install_module);
+        httpd_register_uri_handler(server, &route_call_function);
         return true;
     }
 
