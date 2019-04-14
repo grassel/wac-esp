@@ -12,9 +12,22 @@
 #endif
 
 
+    #define func_l  16
+    #define p_t_l  6
+    #define p_l    12
+    #define res_l  12
+
+typedef struct func_call_struct
+    {
+        char func[func_l];
+        char p1_t[p_t_l];
+        char p1[p_l];
+        char res[res_l];
+    } func_call_t;
+
 void parseWasm(unsigned char *bytes, size_t byte_count);
 
-void runWasm();
+esp_err_t runWasm(func_call_t *funcCall);
 
 
 #endif

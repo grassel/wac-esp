@@ -18,6 +18,9 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 
+#include "freertos/FreeRTOS.h"
+#include <freertos/task.h>
+
 #include <esp_wifi.h>
 #include <esp_event_loop.h>
 #include <esp_log.h>
@@ -70,7 +73,6 @@ esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     return ESP_FAIL;
 }
 
-
 /**
  *  HTTP handler function for URL /call
  * 
@@ -87,8 +89,8 @@ esp_err_t wasm_call_function_handler(httpd_req_t *req)
     if (buf_len < 1)
     {
         ESP_LOGI(TAG, "    URL without parameters, ignoring. DONE");
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, 
-        "No function name found. Ignoring request.");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "No function name found. Ignoring request.");
         return ESP_FAIL;
     }
 
@@ -96,30 +98,21 @@ esp_err_t wasm_call_function_handler(httpd_req_t *req)
     if (httpd_req_get_url_query_str(req, buf, buf_len) != ESP_OK)
     {
         ESP_LOGW(TAG, "   no query string found in url. Ignoring request. DONE!");
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, 
-        "No query string found in url. Ignoring request.");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "No query string found in url. Ignoring request.");
         return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "Found URL query => %s", buf);
 
-    const size_t func_l = 16;
-    const size_t p_t_l = 3;
-    const size_t p_l = 8;
-    
-    struct
-    {
-        char func[func_l];
-        char p1_t[p_t_l];
-        char p1[p_l];
-    } func_call;
+    func_call_t func_call;
 
     // Get value of expected key from query string
     if (httpd_query_key_value(buf, "func", func_call.func, func_l) != ESP_OK)
     {
         ESP_LOGW(TAG, "   no function name found. Ignoring request. DONE!");
-         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, 
-         "No function name found. Ignoring request.");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "No function name found. Ignoring request.");
         return ESP_FAIL;
     }
 
@@ -138,9 +131,18 @@ esp_err_t wasm_call_function_handler(httpd_req_t *req)
         ESP_LOGI(TAG, "   no parameters found");
     }
 
-    // FIXME, get the results of running the function
-    runWasm();
-    char *http_resp_msg = "Function has been called.";
+    esp_err_t success = runWasm(&func_call);
+
+    if (success != ESP_OK)
+    {
+        ESP_LOGW(TAG, "   function execution returned an error");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                            "function execution returned an error, see device logs.");
+        return ESP_FAIL;
+    }
+
+    char http_resp_msg[64];
+    sprintf(http_resp_msg, "The result is >>%s<< .", func_call.res);
 
     /* Send back simple reply 
     FIXME send back the result */
@@ -208,6 +210,9 @@ esp_err_t wasm_install_module_handler(httpd_req_t *req)
 
     parseWasm((unsigned char *)wasm_binary, decoded_length);
 
+    // FIXME are we allowed to free the binary? Seems it leads to random corrupt memory
+    // free(bytes);
+
     /* Send back simple reply 
     FIXME send back the result */
     char *msg = "OK";
@@ -216,6 +221,7 @@ esp_err_t wasm_install_module_handler(httpd_req_t *req)
     // End response
     httpd_resp_send(req, NULL, 0);
 
+    ESP_LOGI(TAG, "wasm_install_module_handler - DONE ------\n");
     return ESP_OK;
 }
 
@@ -345,7 +351,9 @@ bool start_webserver(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     // FIXME: review the needed stack size
-    config.stack_size = 8 * config.stack_size;
+    config.stack_size = 6 * config.stack_size;
+
+    ESP_LOGI(TAG, "HTTP Server max stack size %i", (int)config.stack_size);
 
     // Start the httpd server
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);

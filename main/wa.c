@@ -1,14 +1,23 @@
+
+
+#include "freertos/FreeRTOS.h"
+#include <freertos/task.h>
+
+
 #include <stdlib.h>
 #include <stdint.h>
 //#include <ctype.h>
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
+#include <esp_log.h>
 
 #include "util.h"
 #include "platform.h"
 #include "thunk.h"
 #include "wa.h"
+
+static const char *TAG = "WA";
 
 char OPERATOR_INFO[][20] = {
     // Control flow operators
@@ -520,6 +529,8 @@ Block *pop_block(Module *m) {
 // Push params and locals on the stack and save a call frame on the call stack
 // Sets new pc value for the start of the function
 void setup_call(Module *m, uint32_t fidx) {
+    ESP_LOGI(TAG, "setup_call ...");
+
     Block  *func = &m->functions[fidx];
     Type   *type = func->type;
 
@@ -550,6 +561,10 @@ void setup_call(Module *m, uint32_t fidx) {
 
     // Set program counter to start of function
     m->pc = func->start_addr;
+
+    if (DEBUG) { dump_stacks(m); }
+
+     ESP_LOGI(TAG, "setup_call - DONE");
     return;
 }
 
