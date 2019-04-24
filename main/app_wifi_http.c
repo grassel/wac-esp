@@ -64,7 +64,7 @@ ESP_EVENT_DEFINE_BASE(WAC_HTTPD_EVENTS)
 */
 esp_err_t httpd_resp_send_err(httpd_req_t *req, esp_err_t err, char *msg);
 
-# same as httpd_resp_send_err
+// same as httpd_resp_send_err
 #define HTTPD_400_BAD_REQUEST 400
 #define HTTPD_404_NOT_FOUND 404
 #define HTTPD_500_INTERNAL_SERVER_ERROR 500

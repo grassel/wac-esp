@@ -37,71 +37,6 @@ const char *TAG = "app_wac: ";
 #define TABLE_COUNT 20
 #endif
 
-Memory _env__memory_ = {
-    PAGE_COUNT,  // initial size (64K pages)
-    TOTAL_PAGES, // max size (64K pages)
-    PAGE_COUNT,  // current size (64K pages)
-    NULL};       // memory base
-uint8_t *_env__memoryBase_;
-
-Table _env__table_ = {
-    ANYFUNC,     // on;y allowed value in WASM MVP
-    TABLE_COUNT, // initial
-    TABLE_COUNT, // max
-    TABLE_COUNT, // current
-    0};
-//uint32_t *_env__table_ = 0;
-uint32_t *_env__tableBase_;
-
-double _global__NaN_ = NAN;
-double _global__Infinity_ = INFINITY;
-
-uint32_t **_env__DYNAMICTOP_PTR_;
-uint32_t *_env__tempDoublePtr_;
-
-bool wacIsInitalized = false;
-
-/** 
- * Initializw the WAC Interpreter part 
- *
- *  mainly initialize memory globals
- *
- */
-void initializeWac()
-{
-    // lazy initialize at first use of the Interpreter
-    if (wacIsInitalized)
-        return;
-    wacIsInitalized = true;
-
-    _env__memoryBase_ = calloc(PAGE_COUNT, PAGE_SIZE);
-
-    _env__tempDoublePtr_ = (uint32_t *)_env__memoryBase_;
-    _env__DYNAMICTOP_PTR_ = (uint32_t **)(_env__memoryBase_ + 16);
-
-    *_env__DYNAMICTOP_PTR_ = (uint32_t *)(_env__memoryBase_ + PAGE_COUNT * PAGE_SIZE);
-
-    // This arrangement correlates to the module mangle_table_offset option
-    //    if (posix_memalign((void **)&_env__table_.entries, sysconf(_SC_PAGESIZE),
-    //                       TABLE_COUNT*sizeof(uint32_t))) {
-    //            perror("posix_memalign");
-    _env__table_.entries = malloc(TABLE_COUNT * sizeof(uint32_t));
-    if (_env__table_.entries == NULL)
-    {
-        //
-        perror("InitializeWac: malloc(tablecount....)");
-        exit(1);
-    }
-    _env__tableBase_ = _env__table_.entries;
-
-    info("init_mem results:\n");
-    info("  _env__memory_.bytes: %p\n", _env__memory_.bytes);
-    info("  _env__memoryBase_: %p\n", _env__memoryBase_);
-    info("  _env__DYNAMIC_TOP_PTR_: %p\n", _env__DYNAMICTOP_PTR_);
-    info("  *_env__DYNAMIC_TOP_PTR_: %p\n", *_env__DYNAMICTOP_PTR_);
-    info("  _env__table_.entries: %p\n", _env__table_.entries);
-    info("  _env__tableBase_: 0x%x\n", (unsigned int)_env__tableBase_);
-}
 
 esp_err_t runWasm(func_call_t *fc)
 {
@@ -182,9 +117,6 @@ esp_err_t runWasm(func_call_t *fc)
 
 void parseWasm(unsigned char *bytes, size_t byte_count)
 {
-    // lazy init if not done earlier
-    initializeWac();
-
     Options opts;
     Module *m = load_module(bytes, byte_count, opts);
     m->path = "arith.wasm";
