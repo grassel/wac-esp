@@ -56,6 +56,19 @@ ESP_EVENT_DEFINE_BASE(WAC_HTTPD_EVENTS)
 
 //const char * WAC_HTTPD_EVENTS = "WAC_HTTPD_EVENTS";
 
+
+/**
+   send HTTP error response
+   Strange: the function is defined by not declared in headers of 3.2 API release.
+   this function will be properly in headers of 4.0 API release.
+*/
+esp_err_t httpd_resp_send_err(httpd_req_t *req, esp_err_t err, char *msg);
+
+# same as httpd_resp_send_err
+#define HTTPD_400_BAD_REQUEST 400
+#define HTTPD_404_NOT_FOUND 404
+#define HTTPD_500_INTERNAL_SERVER_ERROR 500
+
 /* This handler allows the custom error handling functionality to be
  * tested from client side. For that, when a PUT request 0 is sent to
  * URI /ctrl, the /hello and /echo URIs are unregistered and following
@@ -67,11 +80,12 @@ ESP_EVENT_DEFINE_BASE(WAC_HTTPD_EVENTS)
  * client to infer if the custom error handler is functioning as expected
  * by observing the socket state.
  */
-esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
+esp_err_t http_404_error_handler(httpd_req_t *req, esp_err_t err)
 {
-    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "WAC API - 404 not found error ");
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "WAC API - 404 not found error "); // this will work with API 4.0 version
     return ESP_FAIL;
 }
+
 
 /**
  *  HTTP handler function for URL /call
